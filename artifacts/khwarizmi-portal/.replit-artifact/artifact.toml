@@ -1,0 +1,27 @@
+kind = "web"
+previewPath = "/"
+title = "بوابة نادي الخوارزمي العلمي"
+version = "1.0.0"
+id = "artifacts/khwarizmi-portal"
+router = "path"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 25211
+
+[services.development]
+run = "pnpm --filter @workspace/khwarizmi-portal run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/khwarizmi-portal", "run", "build" ]
+serve = "static"
+publicDir = "artifacts/khwarizmi-portal/dist/public"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "25211"
+BASE_PATH = "/"
