@@ -6,7 +6,7 @@ import { WaitingPage } from '@/pages/WaitingPage';
 import { StudentView } from '@/pages/StudentView';
 import { TeacherView } from '@/pages/TeacherView';
 import { Header } from '@/components/Header';
-import { Chat } from '@/components/Chat';
+import { ChatPopup } from '@/components/ChatPopup';
 import { PromptCards } from '@/components/PromptCards';
 
 function AppContent() {
@@ -40,7 +40,7 @@ function AppContent() {
       <Header activeRole={effectiveRole} onRoleSwitch={handleRoleSwitch} />
       <main className="main-content">
         {effectiveRole === 'student' ? <StudentView /> : <TeacherView />}
-        <Chat
+        <ChatPopup
           defaultCohort={chatCohort}
           showRoomSelector={userData.role === 'teacher'}
         />
