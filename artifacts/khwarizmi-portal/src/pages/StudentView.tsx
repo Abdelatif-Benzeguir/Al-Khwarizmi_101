@@ -40,6 +40,7 @@ export function StudentView() {
     const unsub = onSnapshot(collection(db, 'resources'), (snap) => {
       const docs: Resource[] = [];
       snap.forEach(d => docs.push({ id: d.id, ...d.data() } as Resource));
+      docs.sort((a, b) => (b.createdAt?.seconds ?? 0) - (a.createdAt?.seconds ?? 0));
       setResources(docs);
       setLoading(false);
     }, (err) => {
