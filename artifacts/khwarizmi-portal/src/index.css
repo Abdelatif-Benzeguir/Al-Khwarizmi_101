@@ -717,7 +717,7 @@ textarea.brand-input { resize: vertical; min-height: 60px; }
   position: fixed;
   bottom: 1.75rem;
   left: 1.75rem;
-  z-index: 90;
+  z-index: 92;
   width: 3.5rem;
   height: 3.5rem;
   border-radius: var(--radius-full);
@@ -730,10 +730,11 @@ textarea.brand-input { resize: vertical; min-height: 60px; }
   justify-content: center;
   font-size: 1.35rem;
   box-shadow: 0 8px 24px rgba(15, 118, 110, 0.45);
-  transition: transform var(--transition-normal), background-color var(--transition-fast), box-shadow var(--transition-normal);
+  transition: transform var(--transition-normal), background-color var(--transition-fast),
+              box-shadow var(--transition-normal), opacity var(--transition-normal);
 }
 .chat-fab:hover { transform: scale(1.1); box-shadow: 0 12px 32px rgba(15, 118, 110, 0.55); }
-.chat-fab.chat-fab-open { background: var(--text-muted); box-shadow: var(--shadow-lg); }
+.chat-fab.chat-fab-open { background: var(--text-secondary); box-shadow: var(--shadow-md); }
 
 .chat-fab-badge {
   position: absolute;
@@ -754,6 +755,7 @@ textarea.brand-input { resize: vertical; min-height: 60px; }
   animation: pulse 2s ease-in-out infinite;
 }
 
+/* Backdrop: blocks clicks outside popup (small screens only) */
 .chat-backdrop {
   position: fixed;
   inset: 0;
@@ -761,6 +763,7 @@ textarea.brand-input { resize: vertical; min-height: 60px; }
   background: transparent;
 }
 
+/* ── Small / medium screens: floating popup ── */
 .chat-popup {
   position: fixed;
   bottom: 6rem;
@@ -779,7 +782,7 @@ textarea.brand-input { resize: vertical; min-height: 60px; }
   pointer-events: none;
   transform: translateY(16px) scale(0.97);
   transform-origin: bottom left;
-  transition: opacity var(--transition-normal), transform var(--transition-normal);
+  transition: opacity var(--transition-slow), transform var(--transition-slow);
 }
 .chat-popup.chat-popup-open {
   opacity: 1;
@@ -788,15 +791,84 @@ textarea.brand-input { resize: vertical; min-height: 60px; }
 }
 
 @media (max-width: 480px) {
-  .chat-popup {
-    left: 0.75rem;
-    right: 0.75rem;
-    width: auto;
-    bottom: 5.5rem;
-  }
-  .chat-fab { bottom: 1.25rem; left: 1.25rem; }
+  .chat-popup { left: 0.75rem; right: 0.75rem; width: auto; bottom: 5.5rem; }
+  .chat-fab   { bottom: 1.25rem; left: 1.25rem; }
 }
 
+/* ── Wide screens: full-height sidebar in left empty space ── */
+@media (min-width: 1680px) {
+  /* Sidebar doesn't need a click-blocking backdrop */
+  .chat-backdrop { pointer-events: none; }
+
+  /* FAB becomes a slim toggle tab on the sidebar's right edge */
+  .chat-fab {
+    bottom: auto;
+    top: 50%;
+    left: 0;
+    width: 2.5rem;
+    height: 5rem;
+    border-radius: 0 var(--radius-lg) var(--radius-lg) 0;
+    font-size: 1.1rem;
+    box-shadow: 4px 0 16px rgba(15, 118, 110, 0.3);
+    transform: translateY(-50%);
+    flex-direction: column;
+    gap: 0.35rem;
+    transition: left var(--transition-slow), opacity var(--transition-normal),
+                background-color var(--transition-fast), box-shadow var(--transition-normal);
+  }
+  .chat-fab:hover { transform: translateY(-50%) scale(1.05); }
+  .chat-fab.chat-fab-open {
+    background: var(--primary);
+    /* moves with the sidebar when it opens */
+    left: calc((100vw - 1280px) / 2);
+    box-shadow: 4px 0 16px rgba(15, 118, 110, 0.25);
+    transform: translateY(-50%);
+  }
+  .chat-fab.chat-fab-open:hover { transform: translateY(-50%) scale(1.05); }
+
+  /* Badge repositions for vertical FAB */
+  .chat-fab-badge {
+    top: -0.4rem;
+    right: -0.4rem;
+  }
+
+  /* Sidebar panel */
+  .chat-popup {
+    left: 0;
+    top: 5rem;           /* sits below sticky header */
+    bottom: 0;
+    width: calc((100vw - 1280px) / 2);
+    min-width: 240px;
+    max-height: none;
+    border-radius: 0 var(--radius-xl) var(--radius-xl) 0;
+    border-left: none;
+    border-bottom: none;
+    border-top: none;
+    border-right: 1px solid var(--border);
+    box-shadow: 6px 0 40px rgba(0, 0, 0, 0.07);
+    transform: translateX(calc(-100% - 2px));
+    transform-origin: left center;
+    z-index: 35;           /* below header (z-index 40) */
+  }
+  .chat-popup.chat-popup-open {
+    transform: translateX(0);
+    opacity: 1;
+  }
+
+  /* Messages area fills all remaining vertical space */
+  .chat-popup .chat-messages-area {
+    height: 0;
+    min-height: 0;
+  }
+
+  /* Header gets a little more breathing room */
+  .chat-popup-header { padding: 1rem 1.25rem; }
+
+  /* Input area sticks to bottom */
+  .chat-popup .chat-footer { padding: 0.85rem 1rem; }
+}
+
+/* Shared popup header & body styles */
 .chat-popup-header {
   display: flex;
   align-items: center;
