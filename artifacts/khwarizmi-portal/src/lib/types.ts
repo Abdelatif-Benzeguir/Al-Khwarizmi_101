@@ -30,6 +30,7 @@ export interface ChatMessage {
   id: string;
   cohort: string;
   text: string;
+  imageUrl?: string;
   senderUid: string;
   senderName: string;
   senderRole: 'student' | 'teacher';

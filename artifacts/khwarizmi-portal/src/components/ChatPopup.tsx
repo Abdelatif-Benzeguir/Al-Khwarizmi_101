@@ -3,7 +3,8 @@ import {
   collection, query, where, onSnapshot, addDoc, updateDoc, deleteDoc,
   doc, serverTimestamp, writeBatch, getDocs
 } from 'firebase/firestore';
-import { db } from '@/lib/firebase';
+import { ref as storageRef, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
+import { db, storage } from '@/lib/firebase';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/contexts/ToastContext';
 import { ConfirmModal } from './ConfirmModal';
@@ -15,6 +16,8 @@ interface ChatPopupProps {
   showRoomSelector: boolean;
 }
 
+const MAX_IMAGE_SIZE = 5 * 1024 * 1024; // 5 MB
+
 export function ChatPopup({ defaultCohort, showRoomSelector }: ChatPopupProps) {
   const { userData } = useAuth();
   const { showToast } = useToast();
@@ -23,12 +26,16 @@ export function ChatPopup({ defaultCohort, showRoomSelector }: ChatPopupProps) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [loading, setLoading] = useState(true);
   const [text, setText] = useState('');
+  const [uploading, setUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
   const [pinnedMsg, setPinnedMsg] = useState<ChatMessage | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
   const [unreadCount, setUnreadCount] = useState(0);
   const [lastSeenCount, setLastSeenCount] = useState(0);
+  const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     setLoading(true);
@@ -53,7 +60,6 @@ export function ChatPopup({ defaultCohort, showRoomSelector }: ChatPopupProps) {
     return () => unsub();
   }, [cohort]);
 
-  // When chat opens: clear badge, scroll, focus input
   useEffect(() => {
     if (open) {
       setUnreadCount(0);
@@ -65,12 +71,16 @@ export function ChatPopup({ defaultCohort, showRoomSelector }: ChatPopupProps) {
     }
   }, [open]);
 
-  // Close on Escape
   useEffect(() => {
-    const handler = (e: KeyboardEvent) => { if (e.key === 'Escape' && open) setOpen(false); };
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        if (lightboxUrl) { setLightboxUrl(null); return; }
+        if (open) setOpen(false);
+      }
+    };
     document.addEventListener('keydown', handler);
     return () => document.removeEventListener('keydown', handler);
-  }, [open]);
+  }, [open, lightboxUrl]);
 
   const sendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -89,6 +99,49 @@ export function ChatPopup({ defaultCohort, showRoomSelector }: ChatPopupProps) {
       setText(trimmed);
       showToast(getFirebaseErrorMessage(err.code) || 'خطأ في إرسال الرسالة.', true);
     }
+  };
+
+  const handleImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !userData) return;
+    if (!file.type.startsWith('image/')) { showToast('يُرجى اختيار صورة صالحة.', true); return; }
+    if (file.size > MAX_IMAGE_SIZE) { showToast('حجم الصورة يتجاوز 5 ميغابايت.', true); return; }
+
+    // Reset file input so same file can be reselected
+    e.target.value = '';
+
+    const path = `chat-images/${cohort}/${Date.now()}_${file.name}`;
+    const sRef = storageRef(storage, path);
+    const task = uploadBytesResumable(sRef, file);
+
+    setUploading(true);
+    setUploadProgress(0);
+
+    task.on(
+      'state_changed',
+      (snap) => setUploadProgress(Math.round((snap.bytesTransferred / snap.totalBytes) * 100)),
+      (err) => {
+        setUploading(false);
+        showToast(getFirebaseErrorMessage(err.code) || 'فشل رفع الصورة.', true);
+      },
+      async () => {
+        try {
+          const url = await getDownloadURL(task.snapshot.ref);
+          await addDoc(collection(db, 'messages'), {
+            cohort, text: '',
+            imageUrl: url,
+            senderUid: userData.uid, senderName: userData.name,
+            senderRole: userData.role,
+            timestamp: serverTimestamp(), isPinned: false
+          });
+          setUploading(false);
+          setUploadProgress(0);
+        } catch (err: any) {
+          setUploading(false);
+          showToast(getFirebaseErrorMessage(err.code) || 'خطأ في إرسال الصورة.', true);
+        }
+      }
+    );
   };
 
   const pinMessage = async (msgId: string) => {
@@ -173,7 +226,10 @@ export function ChatPopup({ defaultCohort, showRoomSelector }: ChatPopupProps) {
             <i className="fa-solid fa-thumbtack" style={{ marginTop: '0.15rem', color: 'var(--secondary)' }}></i>
             <div style={{ flexGrow: 1, paddingRight: '0.25rem', fontSize: '11px' }}>
               <strong className="pinned-lbl">تعليمات الأستاذ: </strong>
-              <span dangerouslySetInnerHTML={{ __html: formatQuizText(pinnedMsg.text) }} />
+              {pinnedMsg.imageUrl
+                ? <img src={pinnedMsg.imageUrl} alt="صورة مثبتة" className="chat-pinned-img" onClick={() => setLightboxUrl(pinnedMsg.imageUrl!)} />
+                : <span dangerouslySetInnerHTML={{ __html: formatQuizText(pinnedMsg.text) }} />
+              }
             </div>
             {userData.role === 'teacher' && (
               <button onClick={unpinMessage} className="chat-unpin-btn" title="إلغاء التثبيت">
@@ -220,7 +276,19 @@ export function ChatPopup({ defaultCohort, showRoomSelector }: ChatPopupProps) {
                       )}
                     </span>
                   </span>
-                  <div className="chat-msg-bubble" dangerouslySetInnerHTML={{ __html: formatQuizText(msg.text) }} />
+                  {msg.imageUrl ? (
+                    <div className="chat-msg-bubble chat-msg-bubble-img">
+                      <img
+                        src={msg.imageUrl}
+                        alt="صورة"
+                        className="chat-bubble-image"
+                        onClick={() => setLightboxUrl(msg.imageUrl!)}
+                        loading="lazy"
+                      />
+                    </div>
+                  ) : (
+                    <div className="chat-msg-bubble" dangerouslySetInnerHTML={{ __html: formatQuizText(msg.text) }} />
+                  )}
                 </div>
               );
             })
@@ -228,24 +296,61 @@ export function ChatPopup({ defaultCohort, showRoomSelector }: ChatPopupProps) {
           <div ref={messagesEndRef} />
         </div>
 
+        {/* Upload progress bar */}
+        {uploading && (
+          <div className="chat-upload-progress">
+            <div className="chat-upload-bar" style={{ width: `${uploadProgress}%` }} />
+            <span className="chat-upload-label">
+              <i className="fa-solid fa-circle-notch animate-spin"></i>
+              جاري رفع الصورة... {uploadProgress}%
+            </span>
+          </div>
+        )}
+
         {/* Footer / Input */}
         <form onSubmit={sendMessage} className="chat-footer">
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/*"
+            style={{ display: 'none' }}
+            onChange={handleImageSelect}
+          />
+          <button
+            type="button"
+            className="chat-img-btn"
+            onClick={() => fileInputRef.current?.click()}
+            disabled={uploading}
+            title="إرسال صورة"
+            aria-label="إرسال صورة"
+          >
+            <i className="fa-solid fa-image"></i>
+          </button>
           <input
             ref={inputRef}
             type="text"
             value={text}
             onChange={e => setText(e.target.value)}
-            required
             placeholder="اكتب رسالتك أو استفسارك..."
             className="brand-input"
             maxLength={500}
             autoComplete="off"
           />
-          <button type="submit" className="chat-send-btn" aria-label="إرسال" disabled={!text.trim()}>
+          <button type="submit" className="chat-send-btn" aria-label="إرسال" disabled={!text.trim() || uploading}>
             <i className="fa-solid fa-paper-plane"></i>
           </button>
         </form>
       </div>
+
+      {/* Lightbox */}
+      {lightboxUrl && (
+        <div className="chat-lightbox" onClick={() => setLightboxUrl(null)}>
+          <button className="chat-lightbox-close" aria-label="إغلاق">
+            <i className="fa-solid fa-xmark"></i>
+          </button>
+          <img src={lightboxUrl} alt="عرض الصورة" className="chat-lightbox-img" onClick={e => e.stopPropagation()} />
+        </div>
+      )}
 
       <ConfirmModal
         open={!!deleteTarget}
